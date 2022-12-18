@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+  </head>
+  <body>
+    <div id="serialControls">
+      <button id="connectButton">Connect</button
+      ><span id="statusBar">Disconnected</span><br />
+      <input id="sendText" type="text" /><input
+        id="sendButton"
+        type="button"
+        value="send"
+      /><br />
+      <textarea readonly id="receiveText"></textarea>
+    </div>
+    <script type="text/javascript">
+      var val1 = 0;
+      var val2 = 0;
+      //Define the elements
+      let sendText = document.getElementById("sendText");
+      let sendButton = document.getElementById("sendButton");
+      let receiveText = document.getElementById("receiveText");
+      let connectButton = document.getElementById("connectButton");
+      let statusBar = document.getElementById("statusBar");
+
+      connectButton.addEventListener("click", clickConnect);
+      sendButton.addEventListener("click", clickSend);
+
+      async function clickConnect() {
+        if (port) {
+          disconnect();
+        } else {
+          await connect();
+        }
+      }
+
+      var outputStream, inputStream, port, serialReader;
+
+      navigator.serial.addEventListener("connect", (e) => {
+        statusBar.innerText = `Connected to ${e.port}`;
+        connectButton.innerText = "Disconnect";
+      });
+
+      navigator.serial.addEventListener("disconnect", (e) => {
+        statusBar.innerText = `Disconnected`;
+        connectButton.innerText = "Connect";
+      });
+
+      async function connect() {
+        disconnect();
+        const filter = {
+          usbVendorId: 0x2341,
+        };
+
+        try {
+          port = await navigator.serial.requestPort({});
+
+          await port.open({ baudRate: 9600 });
+
+          statusBar.innerText = "Connected";
+          connectButton.innerText = "Disconnect";
+          let decoder = new TextDecoderStream();
+          inputDone = port.readable.pipeTo(decoder.writable);
+          inputStream = decoder.readable;
+
+          const encoder = new TextEncoderStream();
+          outputDone = encoder.readable.pipeTo(port.writable);
+          outputStream = encoder.writable;
+
+          serialReader = inputStream.getReader();
+          readLoop();
+        } catch (e) {
+          disconnect();
+          connectButton.innerText = "Connect";
+          statusBar.innerText = e;
+        }
+      }
+
+      async function writeToStream(line) {
+        const writer = outputStream.getWriter();
+        writer.write(line);
+        writer.releaseLock();
+      }
+
+      async function disconnect() {
+        if (serialReader) {
+          await serialReader.cancel();
+          await inputDone.catch(() => {});
+          serialReader = null;
+          inputDone = null;
+        }
+        if (outputStream) {
+          await outputStream.getWriter().close();
+          await outputDone;
+          outputStream = null;
+          outputDone = null;
+        }
+        statusBar.innerText = "Disconnected";
+        connectButton.innerText = "Connect";
+
+        await port.close();
+        port = null;
+      }
+
+      function clickSend() {
+        writeToStream(sendText.value);
+        sendText.value = "";
+      }
+
+      async function readLoop() {
+        while (true) {
+          const { value, done } = await serialReader.read();
+            document.getElementById("xprogress").style.width = value + "%";
+
+          if (done === true) {
+            break;
+          }
+          receiveText.value += value;
+          receiveText.scrollTop = receiveText.scrollHeight;
+        }
+      }
+    </script>
+    <style>
+        .row{
+            display: flex;
+            margin-top: 20px;
+        }
+
+        .progress-bar{
+            width: 500px;
+            height: 50px;
+            background: lightgrey;
+            overflow: hidden;
+        }
+
+        .progress{
+            height: 100%;
+            background: dodgerblue;
+        }
+    </style>
+
+    <div class="row">
+        <p>X: </p>
+        <div class="progress-bar">
+            <div id="xprogress" class="progress"></div>
+        </div>
+    </div>
+    <div class="row">
+        <p>Y: </p>
+        <div class="progress-bar">
+            <div id="yprogress" class="progress"></div>
+        </div>
+    </div>
+  </body>
+</html>
